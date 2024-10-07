@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"strconv"
+	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	cli "github.com/spf13/cobra"
 
-	"github.com/snowzach/golib/conf"
-	"github.com/snowzach/golib/log"
 	"github.com/snowzach/golib/version"
 )
 
@@ -20,8 +20,10 @@ func init() {
 }
 
 var (
+	Logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true, // Enables logging the file and line number
+	}))
 
-	// Config and global logger
 	pidFile string
 	cfgFile string
 
@@ -32,48 +34,35 @@ var (
 		PersistentPreRunE: func(cmd *cli.Command, args []string) error {
 
 			// Parse defaults, config file and environment.
-			if err := conf.C.Parse(
-				conf.WithMap(defaults()),
-				conf.WithFile(cfgFile),
-				conf.WithEnv(),
-			); err != nil {
-				fmt.Printf("could not load config: %v", err)
-				os.Exit(1)
-			}
-
-			var loggerConfig log.LoggerConfig
-			if err := conf.C.Unmarshal(&loggerConfig, conf.UnmarshalConf{Path: "logger"}); err != nil {
-				fmt.Printf("could not parse logger config: %v", err)
-				os.Exit(1)
-			}
-			if err := log.InitLogger(&loggerConfig); err != nil {
-				fmt.Printf("could not configure logger: %v", err)
+			conf, err := Load()
+			if err != nil {
+				Logger.Error(fmt.Sprintf("could not parse YAML config: %v", err))
 				os.Exit(1)
 			}
 
 			// Load the metrics server
-			if conf.C.Bool("metrics.enabled") {
-				hostPort := net.JoinHostPort(conf.C.String("metrics.host"), conf.C.String("metrics.port"))
+			if conf.Metrics.Enabled {
+				hostPort := net.JoinHostPort(conf.Metrics.Host, strconv.Itoa(conf.Metrics.Port))
 				r := http.NewServeMux()
 				r.Handle("/metrics", promhttp.Handler())
-				if conf.C.Bool("profiler.enabled") {
+				if conf.Profiler.Enabled {
 					r.HandleFunc("/debug/pprof/", pprof.Index)
 					r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 					r.HandleFunc("/debug/pprof/profile", pprof.Profile)
 					r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 					r.HandleFunc("/debug/pprof/trace", pprof.Trace)
-					log.Info("Profiler enabled", "profiler_path", fmt.Sprintf("http://%s/debug/pprof/", hostPort))
+					Logger.Info("Profiler enabled", "profiler_path", fmt.Sprintf("http://%s/debug/pprof/", hostPort))
 				}
 				go func() {
 					if err := http.ListenAndServe(hostPort, r); err != nil {
-						log.Errorf("Metrics server error: %v", err)
+						Logger.Error(fmt.Sprintf("Metrics server error: %v", err))
 					}
 				}()
-				log.Info("Metrics enabled", "address", hostPort)
+				Logger.Info("Metrics enabled", "address", hostPort)
 			}
 
 			// Create Pid File
-			pidFile = conf.C.String("pidfile")
+			pidFile = conf.Profiler.Pidfile
 			if pidFile != "" {
 				file, err := os.OpenFile(pidFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 				if err != nil {

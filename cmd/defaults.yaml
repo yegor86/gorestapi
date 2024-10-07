@@ -1,0 +1,77 @@
+# Logger Defaults
+logger:
+  level: "info"
+  encoding: "console"
+  color: true
+  output: "stderr"
+
+# Metrics, profiler, pidfile
+metrics:
+  enabled: true
+  host: ""
+  port: 6060
+
+profiler:
+  enabled: true
+  pidfile: ""
+
+# Server Configuration
+server:
+  port: 8080
+  tls: false
+  devcert: false
+  certfile: "server.crt"
+  keyfile": "server.key"
+
+  #  Server Log
+  log:
+    enabled: true
+    level: "info"
+    request_body: false
+    response_body: false
+    ignore_paths:
+      - "/version"
+  
+  # Server CORS
+  cors:
+    enabled: true
+    allowed_origins:
+      - "*"
+    allowed_methods:
+      - "HEAD"
+      - "OPTIONS"
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "PATCH"
+    allowed_headers:
+      - "*"
+    allow_credentials: false
+    max_age: 300
+
+  # Server Metrics
+  metrics:
+    enabled: true
+    ignore_paths:
+      - "/version"
+
+#  Database Settings
+database:
+  username: "postgres"
+  password: "postgres"
+  host: "localhost"
+  port: 5432
+  database: "gorestapi"
+  auto_create: true
+  schema: "public"
+  search_path: ""
+  sslmode: "disable"
+  sslcert: ""
+  sslkey: ""
+  sslrootcert: ""
+  retries: 5
+  sleep_between_retries: "7s"
+  max_connections: 40
+  log_queries: false
+  wipe_confirm: false
