@@ -2,21 +2,24 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"strconv"
-	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	cli "github.com/spf13/cobra"
-
-	"github.com/snowzach/golib/version"
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
+	// Parse defaults, config file and environment.
+	_, _, err := Load()
+	if err != nil {
+		Logger.Error(fmt.Sprintf("could not parse YAML config: %v", err))
+		os.Exit(1)
+	}
 }
 
 var (
@@ -25,27 +28,19 @@ var (
 	}))
 
 	pidFile string
-	cfgFile string
 
 	// The Root Cli Handler
 	rootCmd = &cli.Command{
-		Version: version.GitVersion,
-		Use:     version.Executable,
+		Version: GitVersion,
+		Use:     Executable,
 		PersistentPreRunE: func(cmd *cli.Command, args []string) error {
 
-			// Parse defaults, config file and environment.
-			conf, err := Load()
-			if err != nil {
-				Logger.Error(fmt.Sprintf("could not parse YAML config: %v", err))
-				os.Exit(1)
-			}
-
 			// Load the metrics server
-			if conf.Metrics.Enabled {
-				hostPort := net.JoinHostPort(conf.Metrics.Host, strconv.Itoa(conf.Metrics.Port))
+			if config.Metrics.Enabled {
+				hostPort := net.JoinHostPort(config.Metrics.Host, strconv.Itoa(config.Metrics.Port))
 				r := http.NewServeMux()
 				r.Handle("/metrics", promhttp.Handler())
-				if conf.Profiler.Enabled {
+				if config.Profiler.Enabled {
 					r.HandleFunc("/debug/pprof/", pprof.Index)
 					r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 					r.HandleFunc("/debug/pprof/profile", pprof.Profile)
@@ -62,7 +57,7 @@ var (
 			}
 
 			// Create Pid File
-			pidFile = conf.Profiler.Pidfile
+			pidFile = config.Profiler.Pidfile
 			if pidFile != "" {
 				file, err := os.OpenFile(pidFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 				if err != nil {

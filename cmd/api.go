@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,20 +11,25 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	cli "github.com/spf13/cobra"
+	"github.com/jmoiron/sqlx"
 
-	"github.com/snowzach/golib/conf"
 	"github.com/snowzach/golib/httpserver"
-	"github.com/snowzach/golib/httpserver/logger"
 	"github.com/snowzach/golib/httpserver/metrics"
 	"github.com/snowzach/golib/log"
 	"github.com/snowzach/golib/signal"
 	"github.com/snowzach/golib/version"
 	"github.com/snowzach/gorestapi/embed"
-	"github.com/snowzach/gorestapi/gorestapi/mainrpc"
-	"github.com/snowzach/gorestapi/store/postgres"
+	// "github.com/snowzach/gorestapi/gorestapi/mainrpc"
+	"github.com/snowzach/golib/store/driver/postgres"
 )
 
 func init() {
+	// Parse defaults, config file and environment.
+	_, _, err := Load()
+	if err != nil {
+		Logger.Error(fmt.Sprintf("could not parse YAML config: %v", err))
+		os.Exit(1)
+	}
 	rootCmd.AddCommand(apiCmd)
 }
 
@@ -43,7 +49,8 @@ var (
 			}
 
 			// Create the database
-			db, err := newDatabase()
+			// db, err := newDatabase()
+			_, err = newDatabase()
 			if err != nil {
 				log.Fatalf("database config error: %v", err)
 			}
@@ -52,9 +59,9 @@ var (
 			router.Get("/version", version.GetVersion())
 
 			// MainRPC
-			if err = mainrpc.Setup(router, db); err != nil {
-				log.Fatalf("Could not setup mainrpc: %v", err)
-			}
+			// if err = mainrpc.Setup(router, db); err != nil {
+			// 	log.Fatalf("Could not setup mainrpc: %v", err)
+			// }
 
 			// Serve embedded public html
 			htmlFilesFS := embed.PublicHTMLFS()
@@ -112,52 +119,36 @@ func newRouter() (chi.Router, error) {
 	)
 
 	// Request logger
-	if conf.C.Bool("server.log.enabled") {
-		var loggerConfig logger.Config
-		if err := conf.C.Unmarshal(&loggerConfig, conf.UnmarshalConf{Path: "server.log"}); err != nil {
-			return nil, fmt.Errorf("could not parser server.log config: %w", err)
-		}
-		switch conf.C.String("logger.encoding") {
-		default:
-			router.Use(logger.LoggerStandardMiddleware(log.Logger.With("context", "server"), loggerConfig))
-		}
+	if config.Server.Log.Enabled {
+		// router.Use(logger.LoggerStandardMiddleware(log.Logger.With("context", "server"), loggerConfig))
 	}
 
 	// CORS handler
-	if conf.C.Bool("server.cors.enabled") {
+	if config.Server.CORS.Enabled {
 		var corsOptions cors.Options
-		if err := conf.C.Unmarshal(&corsOptions, conf.UnmarshalConf{
-			Path: "server.cors",
-			DecoderConfig: conf.DefaultDecoderConfig(
-				conf.WithMatchName(conf.MatchSnakeCaseConfig),
-			),
-		}); err != nil {
+		if err := koanfConfig.Unmarshal("server.cors", &corsOptions); err != nil {
 			return nil, fmt.Errorf("could not parser server.cors config: %w", err)
 		}
 		router.Use(cors.New(corsOptions).Handler)
 	}
 
 	// If we have server metrics enabled, enable the middleware to collect them on the server.
-	if conf.C.Bool("server.metrics.enabled") {
+	if config.Server.Metrics.Enabled {
 		var metricsConfig metrics.Config
-		if err := conf.C.Unmarshal(&metricsConfig, conf.UnmarshalConf{
-			Path:          "server.metrics",
-			DecoderConfig: conf.DefaultDecoderConfig(),
-		}); err != nil {
+		if err := koanfConfig.Unmarshal("server.metrics", &metricsConfig); err != nil {
 			return nil, fmt.Errorf("could not parser server.metrics config: %w", err)
 		}
 		router.Use(metrics.MetricsMiddleware(metricsConfig))
 	}
 
 	return router, nil
-
 }
 
 func newServer(handler http.Handler) (*httpserver.Server, error) {
 
 	// Parse the config
 	var serverConfig = &httpserver.Config{Handler: handler}
-	if err := conf.C.Unmarshal(serverConfig, conf.UnmarshalConf{Path: "server"}); err != nil {
+	if err := koanfConfig.Unmarshal("server", serverConfig); err != nil {
 		return nil, fmt.Errorf("could not parse server config: %w", err)
 	}
 
@@ -171,19 +162,19 @@ func newServer(handler http.Handler) (*httpserver.Server, error) {
 
 }
 
-func newDatabase() (*postgres.Client, error) {
+func newDatabase() (*sqlx.DB, error) {
 
 	var err error
 
 	// Database config
 	var postgresConfig = &postgres.Config{}
-	if err := conf.C.Unmarshal(postgresConfig, conf.UnmarshalConf{Path: "database"}); err != nil {
-		return nil, fmt.Errorf("could not parse database config: %v", err)
+	if err = koanfConfig.Unmarshal("database", postgresConfig); err != nil {
+		return nil, fmt.Errorf("could not parse database config: %w", err)
 	}
 
 	// Loggers
 	postgresConfig.Logger = log.NewWrapper(log.Logger.With("context", "database.postgres"), slog.LevelInfo)
-	if conf.C.Bool("database.log_queries") {
+	if config.Database.LogQueries {
 		postgresConfig.QueryLogger = log.NewWrapper(log.Logger.With("context", "database.postgres.query"), slog.LevelDebug)
 	}
 

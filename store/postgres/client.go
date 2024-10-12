@@ -8,9 +8,9 @@ import (
 	"github.com/snowzach/golib/store/driver/postgres"
 )
 
-type Config struct {
-	postgres.Config `conf:",squash"`
-}
+// type Config struct {
+// 	postgres.Config `conf:",squash"`
+// }
 
 type Client struct {
 	db    *sqlx.DB
@@ -18,9 +18,9 @@ type Client struct {
 }
 
 // New returns a new database client
-func New(cfg *Config) (*Client, error) {
+func New(cfg *postgres.Config) (*Client, error) {
 
-	db, err := postgres.New(&cfg.Config)
+	db, err := postgres.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to database: %w", err)
 	}
