@@ -17,6 +17,7 @@ profiler:
 
 # Server Configuration
 server:
+  host:
   port: 8080
   tls: false
   devcert: false

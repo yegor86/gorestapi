@@ -1,24 +1,25 @@
 package cmd
 
 import (
-	"os"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	cli "github.com/spf13/cobra"
 	"github.com/jmoiron/sqlx"
+	cli "github.com/spf13/cobra"
 
-	"github.com/snowzach/golib/httpserver"
 	"github.com/snowzach/golib/httpserver/metrics"
 	"github.com/snowzach/golib/log"
 	"github.com/snowzach/golib/signal"
 	"github.com/snowzach/golib/version"
 	"github.com/snowzach/gorestapi/embed"
+
 	// "github.com/snowzach/gorestapi/gorestapi/mainrpc"
 	"github.com/snowzach/golib/store/driver/postgres"
 )
@@ -88,9 +89,9 @@ var (
 			}))
 
 			// Create a server
-			s, err := newServer(router)
-			if err != nil {
-				log.Fatalf("could not create server error: %v", err)
+			s := http.Server{
+				Addr:    net.JoinHostPort(config.Server.Host, config.Server.Port),
+				Handler: router,
 			}
 
 			// Start the listener and service connections.
@@ -144,24 +145,6 @@ func newRouter() (chi.Router, error) {
 	return router, nil
 }
 
-func newServer(handler http.Handler) (*httpserver.Server, error) {
-
-	// Parse the config
-	var serverConfig = &httpserver.Config{Handler: handler}
-	if err := koanfConfig.Unmarshal("server", serverConfig); err != nil {
-		return nil, fmt.Errorf("could not parse server config: %w", err)
-	}
-
-	// Create the server
-	s, err := httpserver.New(httpserver.WithConfig(serverConfig))
-	if err != nil {
-		return nil, fmt.Errorf("could not create server: %w", err)
-	}
-
-	return s, nil
-
-}
-
 func newDatabase() (*sqlx.DB, error) {
 
 	var err error
@@ -183,13 +166,20 @@ func newDatabase() (*sqlx.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not get database migrations error: %w", err)
 	}
+	var db *sqlx.DB
 
 	// Create database
-	db, err := postgres.New(postgresConfig)
+	db, err = sqlx.Connect("pgx", fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+		config.Database.Host, config.Database.Port, config.Database.Username, config.Database.Password, config.Database.Database))
 	if err != nil {
-		return nil, fmt.Errorf("could not create database client: %w", err)
+		return nil, fmt.Errorf("database connection error: %w", err)
 	}
+	defer db.Close()
+
+	if err = db.Ping(); err != nil {
+		return nil, fmt.Errorf("could not ping database %w", err)
+	}
+	db.SetMaxOpenConns(config.Database.MaxConnections)
 
 	return db, nil
-
 }

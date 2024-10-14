@@ -11,7 +11,7 @@ import (
 // Global koanf instance. Use . as the key path delimiter. This can be / or anything.
 var (
 	koanfConfig = koanf.New(".")
-	config *Config
+	config      *Config
 )
 
 type Config struct {
@@ -34,7 +34,8 @@ type Config struct {
 	} `yaml:"profiler"`
 
 	Server struct {
-		Port     int    `yaml:"enabled"`
+		Host     string `yaml:"host"`
+		Port     string `yaml:"port"`
 		Tls      bool   `yaml:"tls"`
 		Devcert  bool   `yaml:"devcert"`
 		Certfile string `yaml:"certfile"`
